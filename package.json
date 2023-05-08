@@ -1,0 +1,17 @@
+{
+  "name": "ch3ssv3",
+  "version": "1.0.0",
+  "description": "poop",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "sam bryant",
+  "license": "ISC",
+  "dependencies": {
+    "chess.js": "^1.0.0-beta.5",
+    "prompt-sync": "^4.2.0",
+    "puppeteer": "^20.1.0",
+    "stockfish": "^15.0.0"
+  }
+}
