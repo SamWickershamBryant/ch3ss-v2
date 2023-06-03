@@ -15,7 +15,7 @@ function uci(cmd, cb = (data) => {console.log(data)}){
         cb(data)
     }, 
     function onStream(data){
-        
+        cb(data)
     });
 }
 
@@ -24,6 +24,9 @@ function uci(cmd, cb = (data) => {console.log(data)}){
 
 (async () => {
     var AUTO_MOVE = false
+    var OP_MODE = true
+    var depth = "12"
+    var multipv = 3
     const puppeteer = require("puppeteer");
   
     const {Chess} = require("chess.js");
@@ -53,7 +56,8 @@ function uci(cmd, cb = (data) => {console.log(data)}){
     var stockfish = {
         calc : false,
         uciok : false,
-        bestmove : null
+        bestmove : null,
+        bestmoves : []
         
     }
 
@@ -64,10 +68,11 @@ function uci(cmd, cb = (data) => {console.log(data)}){
     function engineResponse(line){
         
         if (typeof line !== "string") {
-            console.log("non string in onmessage: " + line);
+            
             stockfish.calculating = false
             return;
         }
+        
         if (line == "uciok") {
             stockfish.uciok = true;
            
@@ -87,6 +92,20 @@ function uci(cmd, cb = (data) => {console.log(data)}){
                 stockfish.bestmove = match[1];
                 
             }
+        }else if (line.indexOf("info depth " + depth) >= 0){
+            
+            
+               
+                    
+                    var infos = line.split("pv ")
+                    var thismove = infos[infos.length - 1].split(" ")[0]
+                    if(!stockfish.bestmoves.includes(thismove)){
+                    stockfish.bestmoves.push(thismove)
+                    }
+                
+                console.log(thismove)
+                
+            
         }
         stockfish.calculating = false;
     }
@@ -108,7 +127,7 @@ function uci(cmd, cb = (data) => {console.log(data)}){
     }
 
     async function resetEngine(){
-        uci("ucinewgame")
+        await engineCommand("ucinewgame")
         
     }
 
@@ -127,6 +146,24 @@ function uci(cmd, cb = (data) => {console.log(data)}){
                         var board = document.querySelector("#board-layout-chessboard > chess-board")
                         var bRect = board.getBoundingClientRect()
                         if(!document.getElementById("hackcontrol")){
+
+                            document.addEventListener('keydown', (event) => {
+                                var name = event.key;
+                                var code = event.code;
+                                // Alert the key name and key code on keydown
+                                if (event.key == "f"){
+                                    var moveFrom = document.getElementsByClassName("moveFrom");
+                                    var moveTo = document.getElementsByClassName("moveTo");
+                                    for (el of moveFrom){
+                                        el.style.display = ""
+                                    }
+                                    for (el of moveTo){
+                                        el.style.display = ""
+                                    }
+                                    
+                                }
+                              }, false);
+
                             var hackcontrol = document.createElement("div")
                             hackcontrol.id = "hackcontrol"
                             hackcontrol.style.position = "absolute"
@@ -202,6 +239,7 @@ function uci(cmd, cb = (data) => {console.log(data)}){
                 }
             }
             stockfish.bestmove = null
+            stockfish.bestmoves = []
         }
 
         return result
@@ -230,44 +268,64 @@ function uci(cmd, cb = (data) => {console.log(data)}){
     }
 
     async function calculate(){
-        await enginePrep()
+        console.log("CALCULATE")
+   
         const fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
         let moves = chess.history({verbose:true}).map((h) => {return h.lan}).join(" ")
-        await engineCommand("position fen " + fen + " moves " + moves)
-        await enginePrep()
+        
 
-        var depth = "5"
-        var l = moves.length
+        var usedepth = depth
+        var l = moves.split(" ").length
+        if (!OP_MODE){
         if (l < 20){
-            depth = "8"
+          
+            usedepth = "8"
         }else if (l >= 20 && l < 35){
-            depth = "12"
+            
+            usedepth = "7"
         }else if (l >= 35 && l < 50){
-            depth = "8"
+            
+            usedepth = "6"
         }
         else if (l >= 50 < 100) {
-            depth = "7"
+           
+            usedepth = "5"
         } else{
-            depth = "5"
-        }
-        
-        while (!stockfish.bestmove){
             
-            if (stockfish.calculating == false){
-                await engineCommand("go depth " + depth)
-                
-            }
-            await setTimeoutPromise(5)
+            usedepth = "4"
         }
     }
 
+        await enginePrep()
+        await engineCommand("position fen " + fen + " moves " + moves)
+        await enginePrep()
+        await engineCommand("go depth " + depth)
+
+        var counter = 0
+        while (stockfish.bestmoves.length < multipv){
+            if(stockfish.bestmove != null){
+            console.log("STUCK")
+            console.log(stockfish.bestmoves)
+            if (counter > 10){
+                stockfish.bestmoves.push(stockfish.bestmove)
+            }
+            counter++
+            }
+            await setTimeoutPromise(5)
+            
+        }
+        
+    }
+
     async function viewMove(){
+        console.log("VIEWING")
+        console.log(stockfish.bestmoves)
         try{
             
-            var cpositions = await page.evaluate((bestmove, userColor) => {
+            var cpositions = await page.evaluate((bestmoves, userColor) => {
                 var board = document.querySelector("#board-layout-chessboard > chess-board")
                 if (!board){return}
-                var fromRect, toRect;
+                
                 
                 var letterVal = {
                     "a":1,
@@ -281,90 +339,114 @@ function uci(cmd, cb = (data) => {console.log(data)}){
                 };
                 var bRect = board.getBoundingClientRect()
                 const squarelen = bRect.width / 8.0;
-                var moveSplit = bestmove.split("")
-                
-                if (userColor == "w"){
-                    fromRect = {
-                        x:window.scrollX + bRect.x + (squarelen * (letterVal[moveSplit[0]] - 1)),
-                        y:window.scrollY + bRect.y + (squarelen * (8 - parseInt(moveSplit[1]))),
-                        width:squarelen,
-                        height:squarelen
-                    };
-                    toRect = {
-                        x:window.scrollX + bRect.x + (squarelen * (letterVal[moveSplit[2]] - 1)),
-                        y:window.scrollY + bRect.y + (squarelen * (8 - parseInt(moveSplit[3]))),
-                        width:squarelen,
-                        height:squarelen
-                    };
-                }else{
-                    letterVal = {
-                        "a":8,
-                        "b":7,
-                        "c":6,
-                        "d":5,
-                        "e":4,
-                        "f":3,
-                        "g":2,
-                        "h":1,
-                    };
-                    var numVal = [0,8,7,6,5,4,3,2,1];
-                    fromRect = {
-                        x:window.scrollX + bRect.x + (squarelen * (letterVal[moveSplit[0]] - 1)),
-                        y:window.scrollY + bRect.y + (squarelen * (8 - numVal[parseInt(moveSplit[1])])),
-                        width:squarelen,
-                        height:squarelen
-                    };
-                    toRect = {
-                        x:window.scrollX + bRect.x + (squarelen * (letterVal[moveSplit[2]] - 1)),
-                        y:window.scrollY + bRect.y + (squarelen * (8 - numVal[parseInt(moveSplit[3])])),
-                        width:squarelen,
-                        height:squarelen
-                    };
+                var mainRectf, mainRectt
+
+
+                for (i in bestmoves){
+                    var fromRect, toRect;
+                    var moveSplit = bestmoves[i].split("")
+                    
+                    if (userColor == "w"){
+                        fromRect = {
+                            x:window.scrollX + bRect.x + (squarelen * (letterVal[moveSplit[0]] - 1)),
+                            y:window.scrollY + bRect.y + (squarelen * (8 - parseInt(moveSplit[1]))),
+                            width:squarelen,
+                            height:squarelen
+                        };
+                        toRect = {
+                            x:window.scrollX + bRect.x + (squarelen * (letterVal[moveSplit[2]] - 1)),
+                            y:window.scrollY + bRect.y + (squarelen * (8 - parseInt(moveSplit[3]))),
+                            width:squarelen,
+                            height:squarelen
+                        };
+                    }else{
+                        letterVal = {
+                            "a":8,
+                            "b":7,
+                            "c":6,
+                            "d":5,
+                            "e":4,
+                            "f":3,
+                            "g":2,
+                            "h":1,
+                        };
+                        var numVal = [0,8,7,6,5,4,3,2,1];
+                        fromRect = {
+                            x:window.scrollX + bRect.x + (squarelen * (letterVal[moveSplit[0]] - 1)),
+                            y:window.scrollY + bRect.y + (squarelen * (8 - numVal[parseInt(moveSplit[1])])),
+                            width:squarelen,
+                            height:squarelen
+                        };
+                        toRect = {
+                            x:window.scrollX + bRect.x + (squarelen * (letterVal[moveSplit[2]] - 1)),
+                            y:window.scrollY + bRect.y + (squarelen * (8 - numVal[parseInt(moveSplit[3])])),
+                            width:squarelen,
+                            height:squarelen
+                        };
+                    }
+
+                    if (i == 0){
+                        mainRectf = fromRect
+                        mainRectt = toRect
+                    }
+                    const colors = ['aqua', 'black', 'purple', 'darkorange', 'red']
+                    
+
+
+                    var moveFrom = document.createElement("div");
+                    var moveTo = document.createElement("div");
+                    
+                    moveTo.innerHTML += i
+                    moveFrom.innerHTML += i
+                    moveFrom.className = "moveFrom";
+                    moveFrom.style.position = "absolute";
+                    moveFrom.style.top = fromRect.y + "px";
+                    moveFrom.style.left = fromRect.x + "px";
+                    moveFrom.style.width = fromRect.width + "px";
+                    moveFrom.style.height = fromRect.height + "px";
+                    moveFrom.style.border = "medium dashed " + colors[i];
+                    moveFrom.style.pointerEvents = "none";
+                    moveFrom.style.display = "none"
+                    moveTo.className = "moveTo";
+                    moveTo.style.position = "absolute";
+                    moveTo.style.top = toRect.y + "px";
+                    moveTo.style.left = toRect.x + "px";
+                    moveTo.style.width = toRect.width + "px";
+                    moveTo.style.height = toRect.height + "px";
+                    moveTo.style.border = "medium dashed " + colors[i];
+                    moveTo.style.pointerEvents = "none";
+                    moveTo.style.display = "none"
+
+                    document.body.appendChild(moveFrom)
+                    document.body.appendChild(moveTo)
+                    
+
+
                 }
 
                 
                 
                 
 
-                var moveFrom = document.createElement("div");
-                var moveTo = document.createElement("div");
-                moveFrom.id = "moveFrom";
-                moveFrom.style.position = "absolute";
-                moveFrom.style.top = fromRect.y + "px";
-                moveFrom.style.left = fromRect.x + "px";
-                moveFrom.style.width = fromRect.width + "px";
-                moveFrom.style.height = fromRect.height + "px";
-                moveFrom.style.border = "medium solid red";
-                moveFrom.style.pointerEvents = "none";
-                moveTo.id = "moveTo";
-                moveTo.style.position = "absolute";
-                moveTo.style.top = toRect.y + "px";
-                moveTo.style.left = toRect.x + "px";
-                moveTo.style.width = toRect.width + "px";
-                moveTo.style.height = toRect.height + "px";
-                moveTo.style.border = "medium solid blue";
-                moveTo.style.pointerEvents = "none";
+             
 
-                document.body.appendChild(moveFrom)
-                document.body.appendChild(moveTo)
-
-                return {fx: fromRect.x + (fromRect.width / 2),
-                        fy: fromRect.y + (fromRect.height / 2),
-                        tx: toRect.x + (toRect.width / 2),
-                        ty: toRect.y + (toRect.height / 2)}
+                return {fx: mainRectf.x + (mainRectf.width / 2),
+                        fy: mainRectf.y + (mainRectf.height / 2),
+                        tx: mainRectt.x + (mainRectt.width / 2),
+                        ty: mainRectt.y + (mainRectt.height / 2)}
                 
-            }, stockfish.bestmove, userColor)
+            }, stockfish.bestmoves, userColor)
         } catch(e){return}
         AUTO_MOVE = await page.evaluate(() => {
             var checker = document.getElementById("hackautomove")
             return checker && checker.checked
         })
         if (AUTO_MOVE){
-            await timeoutByMoveCount(moves.length)
+    
             await page.mouse.click(cpositions.fx,cpositions.fy, {delay:0})
-            await setTimeoutPromise(5)
+ 
             await page.mouse.click(cpositions.tx,cpositions.ty, {delay:0})
-            setTimeoutPromise(10)
+            await setTimeoutPromise(100)
             await page.mouse.click(cpositions.tx,cpositions.ty, {delay:0})
             await page.mouse.click(0,0, {delay:0})
         }
@@ -375,21 +457,21 @@ function uci(cmd, cb = (data) => {console.log(data)}){
     }
 
     async function timeoutByMoveCount(l) {
-        var random = Math.floor(Math.random() * 800)
+        var random = Math.floor(Math.random() * 1600)
         var timeout = 1
         if (l < 20){
             timeout = l 
             timeout += random / 2
         }else if (l >= 20 && l < 35){
-            timeout = Math.floor(Math.random() * 1600) 
+            timeout = l + Math.floor(Math.random() * 1600) 
             timeout += random
         }else if (l >= 35 && l < 50){
-            timeout = Math.floor(Math.random() * 300) 
-            timeout += random
+            timeout = l + Math.floor(Math.random() * 700) 
+            timeout += random / 2
         }
         else if (l >= 50 < 100) {
-            timeout = Math.floor(Math.random() * 500) 
-            timeout += random / 2
+            timeout = l + Math.floor(Math.random() * 600) 
+            timeout += random / 3
         } else{
             timeout = math.floor(Math.random() * 50)
         }
@@ -400,14 +482,13 @@ function uci(cmd, cb = (data) => {console.log(data)}){
     async function unviewMove() {
         try{
             await page.evaluate(() => {
-                var moveFrom = document.getElementById("moveFrom");
-                var moveTo = document.getElementById("moveTo");
-                if (moveFrom) {
-                    moveFrom.parentNode.removeChild(moveFrom);
+                var moveFrom = document.getElementsByClassName("moveFrom");
+                var moveTo = document.getElementsByClassName("moveTo");
+                while (moveTo[0] || moveFrom[0]){
+                    moveTo[0].parentNode.removeChild(moveTo[0]);
+                    moveFrom[0].parentNode.removeChild(moveFrom[0]);
                 }
-                if (moveTo) {
-                    moveTo.parentNode.removeChild(moveTo);
-                }
+                
             });
         }catch(e){
             console.log(e);
@@ -417,18 +498,23 @@ function uci(cmd, cb = (data) => {console.log(data)}){
    while(true){
     await setTimeoutPromise(1000)
    }*/
+    uci('setoption name MultiPV value ' + multipv);
      await enginePrep()
+     
      uci("setoption name Threads value 4")
      uci("setoption name Hash value 32")
      uci("setoption name Contempt value 100")
      uci("setoption name Skill Level value 20")
+     uci("setoption name Style value Risky")
+     
      await enginePrep()
      
     while (true){
         moves = await findMoves()
         
+       
         if (moves.length > 0 && !stockfish.bestmove){
-            console.log(moves)
+           
             await unviewMove()
             userColor = userColor == "" ? await getLocalColor(): userColor
             if (moves.length % 2 == 0){
