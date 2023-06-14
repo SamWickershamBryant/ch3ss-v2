@@ -23,10 +23,9 @@ function uci(cmd, cb = (data) => {console.log(data)}){
 
 
 (async () => {
-    var BULLET = true
     var AUTO_MOVE = false
     var OP_MODE = true
-    var depth = "6"
+    var depth = "12"
     var multipv = 3
     const puppeteer = require("puppeteer");
   
@@ -35,7 +34,7 @@ function uci(cmd, cb = (data) => {console.log(data)}){
     const browser = await puppeteer.launch({headless: false});
     const page = await browser.newPage();
     await page.setViewport({ width: 1200, height: 668});
-    await page.goto('https://chess.com/');
+    await page.goto('https://lichess.org/');
     const setTimeoutPromise = timeout => new Promise(resolve => {        
         setTimeout(resolve, timeout);
       });
@@ -59,8 +58,7 @@ function uci(cmd, cb = (data) => {console.log(data)}){
         calc : false,
         uciok : false,
         bestmove : null,
-        bestmoves : [],
-        scores : []
+        bestmoves : []
         
     }
 
@@ -96,7 +94,7 @@ function uci(cmd, cb = (data) => {console.log(data)}){
                 
             }
         }else if (line.indexOf("info depth " + depth) >= 0){
-            console.log(line)
+            
             
                
                     
@@ -105,20 +103,8 @@ function uci(cmd, cb = (data) => {console.log(data)}){
                     if(!stockfish.bestmoves.includes(thismove)){
                     stockfish.bestmoves.push(thismove)
                     }
-
-                    if (line.indexOf("score cp") >= 0){
-                    var centi = line.split("cp ")
-                    var score = centi[1].split(" ")[0]
-                    stockfish.scores.push(parseInt(score))}
-                    else if (line.indexOf("score mate") >= 0){
-                        var centi = line.split("mate ")
-                    var score = centi[1].split(" ")[0]
-                    stockfish.scores.push(parseInt(score) * 1000)
-                    }else{
-                        stockfish.scores.push(0)
-                    }
                 
-                
+                console.log(thismove)
                 
             
         }
@@ -151,14 +137,14 @@ function uci(cmd, cb = (data) => {console.log(data)}){
         try {
                 result = await page.evaluate(() =>{
                     var moves = []
-                    var movesDiv = document.querySelector("#board-layout-sidebar > div > div.play-controller-moves-container > div.play-controller-scrollable > vertical-move-list")
+                    var movesDiv = document.querySelector("#main-wrap > main > div.round__app.variant-standard > rm6 > l4x")
                     if (!movesDiv){
-                        movesDiv = document.querySelector("#live-game-tab-scroll-container > move-list-wc > vertical-move-list")
+                        movesDiv = document.querySelector("#main-wrap > main > div.round__app.variant-standard > rm6 > l4x")
                     }
                         
                     if (movesDiv){
 
-                        var board = document.querySelector("#board-layout-chessboard > chess-board")
+                        var board = document.querySelector("#main-wrap > main > div.round__app.variant-standard > div.round__app__board.main-board")
                         var bRect = board.getBoundingClientRect()
                         if(!document.getElementById("hackcontrol")){
 
@@ -166,7 +152,7 @@ function uci(cmd, cb = (data) => {console.log(data)}){
                                 var name = event.key;
                                 var code = event.code;
                                 // Alert the key name and key code on keydown
-                                if (event.key == "f"){
+                                if (event.key == "g"){
                                     var moveFrom = document.getElementsByClassName("moveFrom");
                                     var moveTo = document.getElementsByClassName("moveTo");
                                     for (el of moveFrom){
@@ -177,21 +163,7 @@ function uci(cmd, cb = (data) => {console.log(data)}){
                                     }
                                     
                                 }
-                                if (event.key == "g"){
-                                    var checker = document.getElementById("hackautomove")
-                                    if (checker){
-                                        checker.checked = true
-                                    }
-                                }
                               }, false);
-                            document.addEventListener("keyup", (event) =>{
-                                if (event.key == "g"){
-                                    var checker = document.getElementById("hackautomove")
-                                    if (checker){
-                                        checker.checked = false
-                                    }
-                                }
-                            }, false)
 
                             var hackcontrol = document.createElement("div")
                             hackcontrol.id = "hackcontrol"
@@ -210,15 +182,9 @@ function uci(cmd, cb = (data) => {console.log(data)}){
                             var label = document.createElement("p")
                             label.innerHTML = "ch3ss: auto move"
                             label.style.color = "magenta"
-
-                            var score = document.createElement("p")
-                            score.innerHTML = "N/A"
-                            score.style.color = "white"
-                            score.id = "hackscore"
                             
                             hackcontrol.appendChild(label)
                             hackcontrol.appendChild(input)
-                            hackcontrol.appendChild(score)
                             
         
                             document.body.appendChild(hackcontrol)
@@ -230,32 +196,16 @@ function uci(cmd, cb = (data) => {console.log(data)}){
 
 
 
-                        movesDiv = movesDiv.children
-                        for (moveSet of movesDiv){
-                            for (move of moveSet.children){
-                                if (move.classList.contains("node")){
-                                    var icon = move.children[0]
-                                    var data = ""
-                                    var number = move.innerHTML.split("<")
-                                    data += number[0]
-                                    if (data.length <= 0){
-                                        number = move.innerHTML.split(">")
-                                    }else{
-                                        number = [""]
-                                    }
-                                    if(icon && icon.getAttribute("data-figurine")){
-                                        data += icon.getAttribute('data-figurine')
-                                    }
+                        movesDiv = movesDiv.getElementsByTagName('kwdb')
+                        
+                            for (move of movesDiv){
+                                
                                     
+                                        moves.push(move.innerHTML)
                                     
-                                    data += number[number.length - 1]
-                                    
-                                    if (data.length > 1){
-                                        moves.push(data)
-                                    }
-                                }
+                                
                             }
-                        }
+                        
                     }
                     
                     return moves
@@ -275,7 +225,6 @@ function uci(cmd, cb = (data) => {console.log(data)}){
             }
             stockfish.bestmove = null
             stockfish.bestmoves = []
-            stockfish.scores = []
         }
 
         return result
@@ -356,11 +305,10 @@ function uci(cmd, cb = (data) => {console.log(data)}){
     async function viewMove(){
         console.log("VIEWING")
         console.log(stockfish.bestmoves)
-        console.log(stockfish.scores)
         try{
             
-            var cpositions = await page.evaluate((bestmoves, userColor, scores) => {
-                var board = document.querySelector("#board-layout-chessboard > chess-board")
+            var cpositions = await page.evaluate((bestmoves, userColor) => {
+                var board = document.querySelector("#main-wrap > main > div.round__app.variant-standard > div.round__app__board.main-board")
                 if (!board){return}
                 
                 
@@ -376,8 +324,7 @@ function uci(cmd, cb = (data) => {console.log(data)}){
                 };
                 var bRect = board.getBoundingClientRect()
                 const squarelen = bRect.width / 8.0;
-                var mainRectf = []
-                var mainRectt = []
+                var mainRectf, mainRectt
 
 
                 for (i in bestmoves){
@@ -423,10 +370,10 @@ function uci(cmd, cb = (data) => {console.log(data)}){
                         };
                     }
 
-                   
-                    mainRectf.push(fromRect)
-                    mainRectt.push(toRect)
-                    
+                    if (i == 0){
+                        mainRectf = fromRect
+                        mainRectt = toRect
+                    }
                     const colors = ['aqua', 'black', 'purple', 'darkorange', 'red']
                     
 
@@ -457,69 +404,40 @@ function uci(cmd, cb = (data) => {console.log(data)}){
 
                     document.body.appendChild(moveFrom)
                     document.body.appendChild(moveTo)
-
-                    
                     
 
 
                 }
 
                 
-                var poses = []
-                for (i in mainRectf){
-                    poses.push({fx: mainRectf[i].x + (mainRectf[i].width / 2),
-                    fy: mainRectf[i].y + (mainRectf[i].height / 2),
-                    tx: mainRectt[i].x + (mainRectt[i].width / 2),
-                    ty: mainRectt[i].y + (mainRectt[i].height / 2)})
-                }
-                    
                 
-                var cpele = document.getElementById("hackscore")
-                if (cpele){
-                    cpele.innerHTML = scores[0]
-                    cpcol = scores[0] >= 0 ? "green" : "red"
-                    cpele.style.color = cpcol
-                }
+                
 
              
-            
-                return poses
-                
-            }, stockfish.bestmoves, userColor, stockfish.scores)
-        } catch(e){return}
-        try{AUTO_MOVE = await page.evaluate(async (bul) => {
-            var checker = document.getElementById("hackautomove")
-            if (bul && checker){
-                while (!checker.checked){
-                    function timeout(ms) {
-                        return new Promise(resolve => setTimeout(resolve, ms));
-                    }
-                    await timeout(50)
-                }
-                return true
-            }
-            return checker && checker.checked
-        },BULLET)}catch(e){
-            AUTO_MOVE = false
-        }
-        if (AUTO_MOVE){
 
-            var rpv = Math.floor(Math.random() * cpositions.length);
-            const diff = Math.abs(stockfish.scores[rpv] - stockfish.scores[0])
-            absscore = Math.abs(stockfish.scores[0])
-            if (diff > 300 && absscore < 500){
-                rpv = 0
-            }
-            if (stockfish.scores[0] == 1000){
-                rpv = 0
-            }
+                return {fx: mainRectf.x + (mainRectf.width / 2),
+                        fy: mainRectf.y + (mainRectf.height / 2),
+                        tx: mainRectt.x + (mainRectt.width / 2),
+                        ty: mainRectt.y + (mainRectt.height / 2),
+                        bx: bRect.x + bRect.width,
+                        by: bRect.y + bRect.height,
+                        }
+                
+            }, stockfish.bestmoves, userColor)
+        } catch(e){return}
+        AUTO_MOVE = await page.evaluate(() => {
+            var checker = document.getElementById("hackautomove")
+            return checker && checker.checked
+        })
+        if (AUTO_MOVE){
     
-            await page.mouse.click(cpositions[rpv].fx,cpositions[rpv].fy, {delay:0})
+            await page.mouse.click(cpositions.fx,cpositions.fy, {delay:0})
  
-            await page.mouse.click(cpositions[rpv].tx,cpositions[rpv].ty, {delay:0})
-            await setTimeoutPromise(50)
-            await page.mouse.click(cpositions[rpv].tx,cpositions[rpv].ty, {delay:0})
-            await page.mouse.click(0,0, {delay:0})
+            await page.mouse.click(cpositions.tx,cpositions.ty, {delay:0})
+            await setTimeoutPromise(100)
+            //await page.mouse.click(cpositions.tx,cpositions.ty, {delay:0})
+            //await setTimeoutPromise(50)
+            //await page.mouse.click(cpositions.bx,cpositions.by, {delay:0})
         }
         try{
 
@@ -575,7 +493,8 @@ function uci(cmd, cb = (data) => {console.log(data)}){
      uci("setoption name Threads value 4")
      uci("setoption name Hash value 32")
      uci("setoption name Contempt value 100")
-     uci("setoption name Skill Level value 8")
+     uci("setoption name Skill Level value 20")
+     uci("setoption name Style value Risky")
      
      await enginePrep()
      
